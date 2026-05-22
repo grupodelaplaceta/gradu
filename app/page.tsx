@@ -352,6 +352,7 @@ export default function PlacetaGrauApp() {
   const [notebookStudentId, setNotebookStudentId] = useState(seedStudents[0].id);
   const [raAssessments, setRaAssessments] = useState<Record<string, AssessmentStatus>>({});
   const [ceAssessments, setCeAssessments] = useState<Record<string, AssessmentStatus>>({});
+  const [assessmentEvidence, setAssessmentEvidence] = useState<Record<string, string>>({});
 
   const selectedCourseStudents = students.filter((student) => student.courseId === attendanceCourseId);
   const officialCourseStudents = students.filter((student) => student.courseId === "conciencia-digital");
@@ -362,20 +363,28 @@ export default function PlacetaGrauApp() {
     const ceCount = curriculum.reduce((total, module) => total + module.ra.reduce((sum, ra) => sum + ra.ce.length, 0), 0);
     return { raCount, ceCount };
   }, []);
+  const notebookStats = useMemo(() => {
+    if (!notebookStudent) return { apto: 0, noApto: 0, proceso: 0, pendiente: 0, ceApto: 0 };
+    return curriculum.reduce(
+      (acc, module) => {
+        module.ra.forEach((ra) => {
+          const status = getRaStatus(notebookStudent.id, ra);
+          if (status === "APTO") acc.apto += 1;
+          if (status === "NO_APTO") acc.noApto += 1;
+          if (status === "EN_PROCESO") acc.proceso += 1;
+          if (status === "NO_EVALUADO") acc.pendiente += 1;
+          acc.ceApto += ra.ce.filter(([code]) => getCeStatus(notebookStudent.id, code) === "APTO").length;
+        });
+        return acc;
+      },
+      { apto: 0, noApto: 0, proceso: 0, pendiente: 0, ceApto: 0 }
+    );
+  }, [ceAssessments, notebookStudent, raAssessments]);
   const notebookProgress = useMemo(() => {
     if (!notebookStudent) return 0;
-    const evaluated = curriculum.reduce((total, module) => {
-      return (
-        total +
-        module.ra.filter((ra) => raAssessments[`${notebookStudent.id}:${ra.code}`] === "APTO").length +
-        module.ra.reduce(
-          (sum, ra) => sum + ra.ce.filter(([code]) => ceAssessments[`${notebookStudent.id}:${code}`] === "APTO").length,
-          0
-        )
-      );
-    }, 0);
+    const evaluated = notebookStats.apto + notebookStats.ceApto;
     return Math.round((evaluated / (curriculumTotals.raCount + curriculumTotals.ceCount)) * 100);
-  }, [ceAssessments, curriculumTotals.ceCount, curriculumTotals.raCount, notebookStudent, raAssessments]);
+  }, [curriculumTotals.ceCount, curriculumTotals.raCount, notebookStats.apto, notebookStats.ceApto, notebookStudent]);
   const attendanceRate = useMemo(() => {
     const values = Object.values(attendance);
     if (!values.length) return 100;
@@ -387,10 +396,50 @@ export default function PlacetaGrauApp() {
     const course = courses.find((item) => item.id === student?.courseId);
     const grade = grades[studentId];
     if (!grade || !course) return "PENDIENTE";
+    if (course.id === "conciencia-digital") {
+      const hasNoApto = curriculum.some((module) => module.ra.some((ra) => getRaStatus(studentId, ra) === "NO_APTO"));
+      const allApto = curriculum.every((module) => module.ra.every((ra) => getRaStatus(studentId, ra) === "APTO"));
+      if (hasNoApto) return "NO APTO";
+      if (allApto && grade.ciscoFinalValidated) return "APTO";
+      return "PENDIENTE";
+    }
     if (course.gradingMode === "CUALITATIVO") return grade.qualitativeStatus;
     if (typeof grade.internalMockScore === "number" && grade.internalMockScore >= 5 && grade.ciscoFinalValidated) return "APTO";
     if (typeof grade.internalMockScore === "number" && grade.internalMockScore < 5) return "NO APTO";
     return "PENDIENTE";
+  }
+
+  function assessmentKey(studentId: string, code: string) {
+    return `${studentId}:${code}`;
+  }
+
+  function getCeStatus(studentId: string, code: string): AssessmentStatus {
+    return ceAssessments[assessmentKey(studentId, code)] ?? "NO_EVALUADO";
+  }
+
+  function getRaStatus(studentId: string, ra: (typeof curriculum)[number]["ra"][number]): AssessmentStatus {
+    const ceStatuses = ra.ce.map(([code]) => getCeStatus(studentId, code));
+    if (ceStatuses.every((status) => status === "APTO")) return "APTO";
+    if (ceStatuses.some((status) => status === "NO_APTO")) return "NO_APTO";
+    if (ceStatuses.some((status) => status === "APTO" || status === "EN_PROCESO")) return "EN_PROCESO";
+    return raAssessments[assessmentKey(studentId, ra.code)] ?? "NO_EVALUADO";
+  }
+
+  function setRaAssessmentStatus(studentId: string, ra: (typeof curriculum)[number]["ra"][number], status: AssessmentStatus) {
+    setRaAssessments((current) => ({ ...current, [assessmentKey(studentId, ra.code)]: status }));
+    if (status === "APTO" || status === "NO_APTO" || status === "NO_EVALUADO") {
+      setCeAssessments((current) => {
+        const next = { ...current };
+        ra.ce.forEach(([code]) => {
+          next[assessmentKey(studentId, code)] = status;
+        });
+        return next;
+      });
+    }
+  }
+
+  function setCeAssessmentStatus(studentId: string, code: string, status: AssessmentStatus) {
+    setCeAssessments((current) => ({ ...current, [assessmentKey(studentId, code)]: status }));
   }
 
   function saveCourse(formData: FormData) {
@@ -453,21 +502,86 @@ export default function PlacetaGrauApp() {
     const course = courses.find((item) => item.id === student.courseId);
     const grade = grades[student.id];
     const doc = new jsPDF();
+    const left = 18;
+    let y = 22;
+    const addLine = (text: string, size = 10, color: [number, number, number] = [51, 65, 85]) => {
+      doc.setFontSize(size);
+      doc.setTextColor(...color);
+      const lines = doc.splitTextToSize(text, 174);
+      if (y + lines.length * 6 > 282) {
+        doc.addPage();
+        y = 22;
+      }
+      doc.text(lines, left, y);
+      y += lines.length * 6;
+    };
+    const addSection = (title: string) => {
+      if (y > 260) {
+        doc.addPage();
+        y = 22;
+      }
+      y += 4;
+      doc.setFillColor(232, 246, 246);
+      doc.rect(left, y - 5, 174, 9, "F");
+      doc.setTextColor(0, 128, 128);
+      doc.setFontSize(11);
+      doc.text(title, left + 2, y + 1);
+      y += 11;
+    };
+    const studentStats = curriculum.reduce(
+      (acc, module) => {
+        module.ra.forEach((ra) => {
+          const status = getRaStatus(student.id, ra);
+          if (status === "APTO") acc.raApto += 1;
+          if (status === "NO_APTO") acc.raNoApto += 1;
+          if (status === "EN_PROCESO") acc.raProceso += 1;
+          if (status === "NO_EVALUADO") acc.raPendiente += 1;
+          acc.ceApto += ra.ce.filter(([code]) => getCeStatus(student.id, code) === "APTO").length;
+        });
+        return acc;
+      },
+      { raApto: 0, raNoApto: 0, raProceso: 0, raPendiente: 0, ceApto: 0 }
+    );
+    const progress = Math.round(((studentStats.raApto + studentStats.ceApto) / (curriculumTotals.raCount + curriculumTotals.ceCount)) * 100);
+
     doc.setTextColor(0, 128, 128);
-    doc.setFontSize(20);
-    doc.text("PlacetaGrau", 20, 22);
+    doc.setFontSize(22);
+    doc.text("PlacetaGrau", left, y);
+    doc.setFontSize(10);
+    doc.text("Departamento de Educación · Grupo de La Placeta", left, y + 7);
     doc.setTextColor(15, 23, 42);
-    doc.setFontSize(14);
-    doc.text("Boletin de Calificaciones", 20, 36);
-    doc.setFontSize(11);
-    doc.text(`Alumno: ${getFullName(student)}`, 20, 54);
-    doc.text(`Curso: ${course?.name ?? "Sin curso"}`, 20, 64);
-    doc.text(`Estado final: ${finalStatusFor(student.id)}`, 20, 74);
-    doc.text(`Evaluacion cualitativa: ${grade?.qualitativeStatus ?? "PENDIENTE"}`, 20, 90);
-    doc.text(`Simulacro interno: ${grade?.internalMockScore || "Sin nota"}`, 20, 100);
-    doc.text(`Examen final Cisco validado: ${grade?.ciscoFinalValidated ? "Si" : "No"}`, 20, 110);
-    doc.text("Observaciones del tutor:", 20, 128);
-    doc.text(doc.splitTextToSize(grade?.tutorObservations || "Sin observaciones registradas.", 165), 20, 138);
+    doc.setFontSize(16);
+    doc.text("Boletín docente de evaluación competencial", left, y + 22);
+    y = 58;
+    addLine(`Alumno/a: ${getFullName(student)}`, 11, [15, 23, 42]);
+    addLine(`Curso: ${course?.name ?? "Sin curso"} · Colección: Alfabetización Digital (Cisco & OpenEDG)`);
+    addLine("Duración: 6 horas teóricas de plataforma / 12 horas tutorizadas · Nivel: Principiante");
+    addLine(`Estado final: ${finalStatusFor(student.id)} · Progreso evaluado APTO: ${progress}%`);
+
+    addSection("Resumen de evaluación");
+    addLine(`RA aptos: ${studentStats.raApto}/${curriculumTotals.raCount} · En proceso: ${studentStats.raProceso} · No aptos: ${studentStats.raNoApto} · Pendientes: ${studentStats.raPendiente}`);
+    addLine(`CE aptos: ${studentStats.ceApto}/${curriculumTotals.ceCount}`);
+    addLine(`Examen Simulacro Asociación: ${grade?.internalMockScore || "Sin nota"} / 10`);
+    addLine(`Examen Final Cisco: ${grade?.ciscoFinalValidated ? "Validado" : "Pendiente de validación"}`);
+    addLine(`Observaciones del tutor: ${grade?.tutorObservations || "Sin observaciones registradas."}`);
+
+    addSection("Evaluación por resultados de aprendizaje y criterios");
+    curriculum.forEach((module) => {
+      addLine(`${module.module} · ${module.title}`, 10, [15, 23, 42]);
+      module.ra.forEach((ra) => {
+        const raStatus = assessmentLabels[getRaStatus(student.id, ra)];
+        addLine(`${ra.code} [${raStatus}] ${ra.text}`, 9, [0, 90, 90]);
+        ra.ce.forEach(([code, text]) => {
+          const ceStatus = assessmentLabels[getCeStatus(student.id, code)];
+          const evidence = assessmentEvidence[assessmentKey(student.id, code)];
+          addLine(`  ${code} [${ceStatus}] ${text}${evidence ? ` · Evidencia: ${evidence}` : ""}`, 8);
+        });
+      });
+      y += 2;
+    });
+
+    addSection("Criterio de cierre");
+    addLine("Para obtener APTO final en Conciencia Digital, el alumno debe alcanzar APTO en los resultados de aprendizaje, completar el simulacro interno y validar la evaluación final de Cisco.");
     doc.save(`boletin-${student.lastName.toLowerCase().replaceAll(" ", "-")}.pdf`);
   }
 
@@ -566,7 +680,7 @@ export default function PlacetaGrauApp() {
                 </div>
 
                 <div className="rounded border border-slate-200 bg-white p-4 shadow-panel">
-                  <div className="grid gap-4 lg:grid-cols-[280px_1fr_140px]">
+                  <div className="grid gap-4 lg:grid-cols-[280px_1fr_140px_160px]">
                     <Field label="Alumno del cuaderno">
                       <select
                         className="input"
@@ -592,6 +706,25 @@ export default function PlacetaGrauApp() {
                         {notebookProgress}%
                       </p>
                     </div>
+                    <div className="flex items-end">
+                      <button
+                        className="btn-primary w-full"
+                        type="button"
+                        disabled={!notebookStudent}
+                        onClick={() => notebookStudent && downloadReport(notebookStudent)}
+                      >
+                        <FileDown size={16} /> Boletín
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-4 h-2 overflow-hidden rounded bg-slate-100">
+                    <div className="h-full bg-school-teal transition-all" style={{ width: `${notebookProgress}%` }} />
+                  </div>
+                  <div className="mt-4 grid gap-2 text-sm md:grid-cols-4">
+                    <NotebookStat label="RA aptos" value={`${notebookStats.apto}/${curriculumTotals.raCount}`} tone="ok" />
+                    <NotebookStat label="En proceso" value={notebookStats.proceso} tone="work" />
+                    <NotebookStat label="No aptos" value={notebookStats.noApto} tone="risk" />
+                    <NotebookStat label="Pendientes" value={notebookStats.pendiente} tone="neutral" />
                   </div>
                 </div>
 
@@ -619,15 +752,16 @@ export default function PlacetaGrauApp() {
                               </td>
                               <td className="px-3 py-2">
                                 <AssessmentSelect
-                                  value={raAssessments[`${notebookStudent?.id}:${ra.code}`] ?? "NO_EVALUADO"}
+                                  value={notebookStudent ? getRaStatus(notebookStudent.id, ra) : "NO_EVALUADO"}
                                   onChange={(value) =>
                                     notebookStudent &&
-                                    setRaAssessments((current) => ({ ...current, [`${notebookStudent.id}:${ra.code}`]: value }))
+                                    setRaAssessmentStatus(notebookStudent.id, ra, value)
                                   }
                                 />
+                                <p className="mt-1 text-xs text-slate-500">Cambiar a APTO/NO APTO aplica el estado a sus CE.</p>
                               </td>
                               <td className="px-3 py-2">
-                                <input className="input" placeholder="Observación breve del RA" />
+                                <AssessmentBadge status={notebookStudent ? getRaStatus(notebookStudent.id, ra) : "NO_EVALUADO"} />
                               </td>
                             </tr>
                             {ra.ce.map(([code, text]) => (
@@ -637,15 +771,26 @@ export default function PlacetaGrauApp() {
                                 <td className="px-3 py-2 text-slate-700">{text}</td>
                                 <td className="px-3 py-2">
                                   <AssessmentSelect
-                                    value={ceAssessments[`${notebookStudent?.id}:${code}`] ?? "NO_EVALUADO"}
+                                    value={notebookStudent ? getCeStatus(notebookStudent.id, code) : "NO_EVALUADO"}
                                     onChange={(value) =>
                                       notebookStudent &&
-                                      setCeAssessments((current) => ({ ...current, [`${notebookStudent.id}:${code}`]: value }))
+                                      setCeAssessmentStatus(notebookStudent.id, code, value)
                                     }
                                   />
                                 </td>
                                 <td className="px-3 py-2">
-                                  <input className="input" placeholder="Evidencia o actividad" />
+                                  <input
+                                    className="input"
+                                    placeholder="Actividad, observación o prueba"
+                                    value={notebookStudent ? assessmentEvidence[assessmentKey(notebookStudent.id, code)] ?? "" : ""}
+                                    onChange={(event) =>
+                                      notebookStudent &&
+                                      setAssessmentEvidence((current) => ({
+                                        ...current,
+                                        [assessmentKey(notebookStudent.id, code)]: event.target.value
+                                      }))
+                                    }
+                                  />
                                 </td>
                               </tr>
                             ))}
@@ -1174,12 +1319,55 @@ function StatusPill({ status }: { status: FinalStatus }) {
 
 function AssessmentSelect({ value, onChange }: { value: AssessmentStatus; onChange: (value: AssessmentStatus) => void }) {
   return (
-    <select className="input" value={value} onChange={(event) => onChange(event.target.value as AssessmentStatus)}>
+    <select
+      className={clsx(
+        "input font-medium",
+        value === "APTO" && "border-emerald-300 bg-emerald-50 text-emerald-800",
+        value === "NO_APTO" && "border-rose-300 bg-rose-50 text-rose-800",
+        value === "EN_PROCESO" && "border-amber-300 bg-amber-50 text-amber-800",
+        value === "NO_EVALUADO" && "bg-white text-slate-700"
+      )}
+      value={value}
+      onChange={(event) => onChange(event.target.value as AssessmentStatus)}
+    >
       {Object.entries(assessmentLabels).map(([status, label]) => (
         <option key={status} value={status}>
           {label}
         </option>
       ))}
     </select>
+  );
+}
+
+function AssessmentBadge({ status }: { status: AssessmentStatus }) {
+  return (
+    <span
+      className={clsx(
+        "inline-flex rounded px-2.5 py-1 text-xs font-semibold",
+        status === "APTO" && "bg-emerald-100 text-emerald-700",
+        status === "NO_APTO" && "bg-rose-100 text-rose-700",
+        status === "EN_PROCESO" && "bg-amber-100 text-amber-700",
+        status === "NO_EVALUADO" && "bg-slate-100 text-slate-600"
+      )}
+    >
+      {assessmentLabels[status]}
+    </span>
+  );
+}
+
+function NotebookStat({ label, value, tone }: { label: string; value: string | number; tone: "ok" | "work" | "risk" | "neutral" }) {
+  return (
+    <div
+      className={clsx(
+        "rounded border px-3 py-2",
+        tone === "ok" && "border-emerald-200 bg-emerald-50 text-emerald-800",
+        tone === "work" && "border-amber-200 bg-amber-50 text-amber-800",
+        tone === "risk" && "border-rose-200 bg-rose-50 text-rose-800",
+        tone === "neutral" && "border-slate-200 bg-slate-50 text-slate-700"
+      )}
+    >
+      <p className="text-xs font-medium uppercase">{label}</p>
+      <p className="text-lg font-bold">{value}</p>
+    </div>
   );
 }
