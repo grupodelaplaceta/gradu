@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Fragment } from "react";
 import type { ComponentType, FormEvent, ReactNode } from "react";
 import { jsPDF } from "jspdf";
 import {
@@ -9,6 +10,7 @@ import {
   BookOpen,
   CalendarCheck,
   CheckCircle2,
+  ClipboardList,
   FileDown,
   GraduationCap,
   Info,
@@ -26,6 +28,7 @@ type GradingMode = "CUALITATIVO" | "NUMERICO_CISCO";
 type AttendanceStatus = "ASISTE" | "FALTA_JUSTIFICADA" | "FALTA_INJUSTIFICADA" | "RETRASO";
 type SessionType = "Presencial" | "Telematica";
 type FinalStatus = "APTO" | "NO APTO" | "PENDIENTE";
+type AssessmentStatus = "NO_EVALUADO" | "EN_PROCESO" | "APTO" | "NO_APTO";
 
 type Course = {
   id: string;
@@ -63,6 +66,7 @@ type Adaptation = {
 };
 
 const nav = [
+  { id: "notebook", label: "Cuaderno docente", icon: ClipboardList },
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "courses", label: "Cursos/Programas", icon: BookOpen },
   { id: "students", label: "Alumnos", icon: Users },
@@ -87,14 +91,194 @@ const attendanceLabels: Record<AttendanceStatus, string> = {
   RETRASO: "Retraso"
 };
 
+const assessmentLabels: Record<AssessmentStatus, string> = {
+  NO_EVALUADO: "No evaluado",
+  EN_PROCESO: "En proceso",
+  APTO: "Apto",
+  NO_APTO: "No apto"
+};
+
+const curriculum = [
+  {
+    module: "M1",
+    title: "Hay todo un mundo nuevo ahi fuera",
+    ra: [
+      {
+        code: "RA 1.1",
+        text: "Diferencia hardware y software en dispositivos de uso comun.",
+        ce: [
+          ["CE 1.1.a", "Clasifica pantalla, teclado, router y memoria como hardware."],
+          ["CE 1.1.b", "Identifica programas, sistemas operativos y apps moviles como software."]
+        ]
+      },
+      {
+        code: "RA 1.2",
+        text: "Reconoce el impacto de las tecnologias digitales en el entorno cotidiano y educativo.",
+        ce: [
+          ["CE 1.2.a", "Describe situaciones donde la tecnologia optimiza tiempo y comunicacion familiar."],
+          ["CE 1.2.b", "Identifica herramientas digitales basicas usadas en centros educativos."]
+        ]
+      }
+    ]
+  },
+  {
+    module: "M2",
+    title: "Herramientas basicas",
+    ra: [
+      {
+        code: "RA 2.1",
+        text: "Configura y opera funciones basicas del sistema operativo.",
+        ce: [
+          ["CE 2.1.a", "Enciende, apaga, reinicia y desbloquea dispositivos de forma segura."],
+          ["CE 2.1.b", "Revisa almacenamiento, idioma y hora desde ajustes."]
+        ]
+      },
+      {
+        code: "RA 2.2",
+        text: "Gestiona archivos y documentos digitales en local.",
+        ce: [
+          ["CE 2.2.a", "Crea, renombra, mueve y elimina carpetas."],
+          ["CE 2.2.b", "Localiza archivos descargados como resguardos, PDF escolares o fotos."]
+        ]
+      },
+      {
+        code: "RA 2.3",
+        text: "Resuelve problemas menores de conectividad y rendimiento.",
+        ce: [
+          ["CE 2.3.a", "Identifica fallos WiFi y aplica reinicio de router o reconexion."],
+          ["CE 2.3.b", "Detecta lentitud por apps abiertas o falta de espacio y libera memoria basica."]
+        ]
+      }
+    ]
+  },
+  {
+    module: "M3",
+    title: "Navegacion y busqueda",
+    ra: [
+      {
+        code: "RA 3.1",
+        text: "Usa navegadores web gestionando la interfaz.",
+        ce: [
+          ["CE 3.1.a", "Distingue barra de direcciones y cuadro de busqueda."],
+          ["CE 3.1.b", "Trabaja con varias pestanas sin perder el hilo."],
+          ["CE 3.1.c", "Organiza webs frecuentes en marcadores o favoritos."]
+        ]
+      },
+      {
+        code: "RA 3.2",
+        text: "Aplica busquedas adaptadas a necesidades del hogar.",
+        ce: [
+          ["CE 3.2.a", "Redacta palabras clave precisas evitando resultados genericos o publicitarios."],
+          ["CE 3.2.b", "Usa Imagenes, Mapas, Noticias o Videos segun el tipo de informacion."]
+        ]
+      }
+    ]
+  },
+  {
+    module: "M4",
+    title: "Mantenimiento y mejora",
+    ra: [
+      {
+        code: "RA 4.1",
+        text: "Aplica mantenimiento preventivo de software.",
+        ce: [
+          ["CE 4.1.a", "Reconoce y ejecuta actualizaciones del sistema."],
+          ["CE 4.1.b", "Relaciona software al dia con rendimiento y seguridad."]
+        ]
+      },
+      {
+        code: "RA 4.2",
+        text: "Descarga e instala aplicaciones de forma segura.",
+        ce: [
+          ["CE 4.2.a", "Usa tiendas oficiales o webs oficiales de fabricantes."],
+          ["CE 4.2.b", "Revisa y desmarca casillas sospechosas o publicidad enganosa."]
+        ]
+      }
+    ]
+  },
+  {
+    module: "M5",
+    title: "Seguridad, privacidad y consecuencias",
+    ra: [
+      {
+        code: "RA 5.1",
+        text: "Crea y gestiona credenciales seguras.",
+        ce: [
+          ["CE 5.1.a", "Disena contrasenas robustas con letras, numeros y simbolos."],
+          ["CE 5.1.b", "Evita repetir contrasenas y aplica guardado o memorizacion segura."]
+        ]
+      },
+      {
+        code: "RA 5.2",
+        text: "Detecta fraudes, amenazas y tecnicas basicas de ingenieria social.",
+        ce: [
+          ["CE 5.2.a", "Identifica alarmas de phishing en correos o SMS."],
+          ["CE 5.2.b", "Describe malware y evita ventanas emergentes o alertas falsas."]
+        ]
+      },
+      {
+        code: "RA 5.3",
+        text: "Protege privacidad, datos personales e imagen de menores.",
+        ce: [
+          ["CE 5.3.a", "Configura opciones basicas de privacidad."],
+          ["CE 5.3.b", "Valora la huella digital de compartir fotos o datos familiares."]
+        ]
+      }
+    ]
+  },
+  {
+    module: "M6",
+    title: "Autoaprendizaje y pensamiento critico",
+    ra: [
+      {
+        code: "RA 6.1",
+        text: "Usa la red como espacio de autoaprendizaje y apoyo escolar.",
+        ce: [
+          ["CE 6.1.a", "Localiza tutoriales o cursos gratuitos utiles para vida laboral o domestica."],
+          ["CE 6.1.b", "Accede a recursos fiables para ayudar en tareas escolares."]
+        ]
+      },
+      {
+        code: "RA 6.2",
+        text: "Desarrolla pensamiento critico frente a informacion digital.",
+        ce: [
+          ["CE 6.2.a", "Contrasta noticias o cadenas antes de compartirlas."],
+          ["CE 6.2.b", "Distingue fuentes oficiales de blogs o foros informales."]
+        ]
+      }
+    ]
+  },
+  {
+    module: "M7",
+    title: "Evaluacion final e integracion",
+    ra: [
+      {
+        code: "RA 7.1",
+        text: "Supera simulaciones de problemas digitales cotidianos.",
+        ce: [
+          ["CE 7.1.a", "Realiza el simulacro de la asociacion de forma calmada y analitica."],
+          ["CE 7.1.b", "Corrige errores del simulacro y asimila la solucion correcta."]
+        ]
+      },
+      {
+        code: "RA 7.2",
+        text: "Valida conocimientos en plataforma oficial externa y encuesta de calidad.",
+        ce: [
+          ["CE 7.2.a", "Completa la encuesta de satisfaccion Cisco de forma reflexiva."],
+          ["CE 7.2.b", "Supera la Evaluacion Final de Conciencia Digital de Cisco."]
+        ]
+      }
+    ]
+  }
+];
+
 const seedCourses: Course[] = [
   {
-    id: "cisco-it-2026",
-    name: "Cisco IT Essentials - PlacetaEDU",
-    modality: "PLACETA_EDU",
-    collaboratorCenter: "IES Mediterrania",
+    id: "conciencia-digital",
+    name: "Conciencia Digital",
+    modality: "STANDARD",
     onlineWithoutCenter: false,
-    gradingMode: "NUMERICO_CISCO",
+    gradingMode: "CUALITATIVO",
     isOpen: true
   },
   {
@@ -115,7 +299,7 @@ const seedStudents: Student[] = [
     documentId: "Y1234567L",
     email: "nora.soler@example.org",
     phone: "600 120 320",
-    courseId: "cisco-it-2026",
+    courseId: "conciencia-digital",
     confidentialNotes: "Seguimiento social trimestral."
   },
   {
@@ -141,7 +325,7 @@ function getFullName(student?: Student) {
 }
 
 export default function PlacetaGrauApp() {
-  const [active, setActive] = useState<(typeof nav)[number]["id"]>("dashboard");
+  const [active, setActive] = useState<(typeof nav)[number]["id"]>("notebook");
   const [courses, setCourses] = useState<Course[]>(seedCourses);
   const [students, setStudents] = useState<Student[]>(seedStudents);
   const [grades, setGrades] = useState<Record<string, Grade>>({
@@ -165,9 +349,33 @@ export default function PlacetaGrauApp() {
   const [attendanceCourseId, setAttendanceCourseId] = useState(seedCourses[0].id);
   const [sessionType, setSessionType] = useState<SessionType>("Presencial");
   const [attendance, setAttendance] = useState<Record<string, AttendanceStatus>>({});
+  const [notebookStudentId, setNotebookStudentId] = useState(seedStudents[0].id);
+  const [raAssessments, setRaAssessments] = useState<Record<string, AssessmentStatus>>({});
+  const [ceAssessments, setCeAssessments] = useState<Record<string, AssessmentStatus>>({});
 
   const selectedCourseStudents = students.filter((student) => student.courseId === attendanceCourseId);
+  const officialCourseStudents = students.filter((student) => student.courseId === "conciencia-digital");
+  const notebookStudent = students.find((student) => student.id === notebookStudentId) ?? officialCourseStudents[0] ?? students[0];
   const openCourses = courses.filter((course) => course.isOpen);
+  const curriculumTotals = useMemo(() => {
+    const raCount = curriculum.reduce((total, module) => total + module.ra.length, 0);
+    const ceCount = curriculum.reduce((total, module) => total + module.ra.reduce((sum, ra) => sum + ra.ce.length, 0), 0);
+    return { raCount, ceCount };
+  }, []);
+  const notebookProgress = useMemo(() => {
+    if (!notebookStudent) return 0;
+    const evaluated = curriculum.reduce((total, module) => {
+      return (
+        total +
+        module.ra.filter((ra) => raAssessments[`${notebookStudent.id}:${ra.code}`] === "APTO").length +
+        module.ra.reduce(
+          (sum, ra) => sum + ra.ce.filter(([code]) => ceAssessments[`${notebookStudent.id}:${code}`] === "APTO").length,
+          0
+        )
+      );
+    }, 0);
+    return Math.round((evaluated / (curriculumTotals.raCount + curriculumTotals.ceCount)) * 100);
+  }, [ceAssessments, curriculumTotals.ceCount, curriculumTotals.raCount, notebookStudent, raAssessments]);
   const attendanceRate = useMemo(() => {
     const values = Object.values(attendance);
     if (!values.length) return 100;
@@ -348,6 +556,108 @@ export default function PlacetaGrauApp() {
           </div>
 
           <div className="space-y-5 p-4 lg:p-8">
+            {active === "notebook" && (
+              <Panel title="Cuaderno docente - Conciencia Digital" icon={ClipboardList}>
+                <div className="grid gap-3 md:grid-cols-4">
+                  <Kpi title="Resultados de aprendizaje" value={curriculumTotals.raCount} icon={ListChecks} />
+                  <Kpi title="Criterios evaluables" value={curriculumTotals.ceCount} icon={CheckCircle2} />
+                  <Kpi title="Horas plataforma" value="6 h" icon={BookOpen} />
+                  <Kpi title="Horas tutorizadas" value="12 h" icon={Users} />
+                </div>
+
+                <div className="rounded border border-slate-200 bg-white p-4 shadow-panel">
+                  <div className="grid gap-4 lg:grid-cols-[280px_1fr_140px]">
+                    <Field label="Alumno del cuaderno">
+                      <select
+                        className="input"
+                        value={notebookStudent?.id ?? ""}
+                        onChange={(event) => setNotebookStudentId(event.target.value)}
+                      >
+                        {officialCourseStudents.map((student) => (
+                          <option key={student.id} value={student.id}>
+                            {getFullName(student)}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <div>
+                      <p className="text-sm font-medium text-slate-700">Curso oficial</p>
+                      <p className="mt-1 rounded border border-teal-200 bg-school-pale px-3 py-2 text-sm text-school-dark">
+                        Conciencia Digital · Alfabetización Digital (Cisco & OpenEDG) · Cualitativa APTO / NO APTO
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-slate-700">Progreso APTO</p>
+                      <p className="mt-1 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-2xl font-bold text-slate-950">
+                        {notebookProgress}%
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto rounded border border-slate-200 bg-white">
+                  <table className="min-w-[1100px] divide-y divide-slate-200 text-sm">
+                    <thead className="bg-slate-100 text-left text-xs uppercase text-slate-500">
+                      <tr>
+                        <th className="w-28 px-3 py-2">Bloque</th>
+                        <th className="w-24 px-3 py-2">Código</th>
+                        <th className="px-3 py-2">Elemento evaluable</th>
+                        <th className="w-44 px-3 py-2">Evaluación</th>
+                        <th className="w-64 px-3 py-2">Evidencia docente</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {curriculum.map((module) =>
+                        module.ra.map((ra) => (
+                          <Fragment key={ra.code}>
+                            <tr className="bg-teal-50/60">
+                              <td className="px-3 py-2 font-semibold text-school-dark">{module.module}</td>
+                              <td className="px-3 py-2 font-semibold text-school-dark">{ra.code}</td>
+                              <td className="px-3 py-2">
+                                <p className="font-semibold text-slate-950">{module.title}</p>
+                                <p className="text-slate-700">{ra.text}</p>
+                              </td>
+                              <td className="px-3 py-2">
+                                <AssessmentSelect
+                                  value={raAssessments[`${notebookStudent?.id}:${ra.code}`] ?? "NO_EVALUADO"}
+                                  onChange={(value) =>
+                                    notebookStudent &&
+                                    setRaAssessments((current) => ({ ...current, [`${notebookStudent.id}:${ra.code}`]: value }))
+                                  }
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <input className="input" placeholder="Observación breve del RA" />
+                              </td>
+                            </tr>
+                            {ra.ce.map(([code, text]) => (
+                              <tr key={code} className="hover:bg-slate-50">
+                                <td className="px-3 py-2 text-slate-500">{module.module}</td>
+                                <td className="px-3 py-2 font-medium text-slate-700">{code}</td>
+                                <td className="px-3 py-2 text-slate-700">{text}</td>
+                                <td className="px-3 py-2">
+                                  <AssessmentSelect
+                                    value={ceAssessments[`${notebookStudent?.id}:${code}`] ?? "NO_EVALUADO"}
+                                    onChange={(value) =>
+                                      notebookStudent &&
+                                      setCeAssessments((current) => ({ ...current, [`${notebookStudent.id}:${code}`]: value }))
+                                    }
+                                  />
+                                </td>
+                                <td className="px-3 py-2">
+                                  <input className="input" placeholder="Evidencia o actividad" />
+                                </td>
+                              </tr>
+                            ))}
+                          </Fragment>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Panel>
+            )}
+
             {active === "dashboard" && (
               <div className="space-y-5">
                 <div className="grid gap-4 md:grid-cols-3">
@@ -859,5 +1169,17 @@ function StatusPill({ status }: { status: FinalStatus }) {
     >
       {status}
     </span>
+  );
+}
+
+function AssessmentSelect({ value, onChange }: { value: AssessmentStatus; onChange: (value: AssessmentStatus) => void }) {
+  return (
+    <select className="input" value={value} onChange={(event) => onChange(event.target.value as AssessmentStatus)}>
+      {Object.entries(assessmentLabels).map(([status, label]) => (
+        <option key={status} value={status}>
+          {label}
+        </option>
+      ))}
+    </select>
   );
 }

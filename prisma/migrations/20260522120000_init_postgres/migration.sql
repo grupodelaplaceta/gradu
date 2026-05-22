@@ -63,6 +63,30 @@ CREATE TABLE "Student" (
   CONSTRAINT "Student_pkey" PRIMARY KEY ("id")
 );
 
+CREATE TABLE "LearningOutcomeAssessment" (
+  "id" TEXT NOT NULL,
+  "studentId" TEXT NOT NULL,
+  "learningOutcomeId" TEXT NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'NO_EVALUADO',
+  "evidence" TEXT,
+  "teacherNotes" TEXT,
+  "assessedAt" TIMESTAMP(3),
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "LearningOutcomeAssessment_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE "EvaluationCriterionAssessment" (
+  "id" TEXT NOT NULL,
+  "studentId" TEXT NOT NULL,
+  "evaluationCriterionId" TEXT NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'NO_EVALUADO',
+  "evidence" TEXT,
+  "teacherNotes" TEXT,
+  "assessedAt" TIMESTAMP(3),
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "EvaluationCriterionAssessment_pkey" PRIMARY KEY ("id")
+);
+
 CREATE TABLE "AttendanceSession" (
   "id" TEXT NOT NULL,
   "date" TIMESTAMP(3) NOT NULL,
@@ -109,6 +133,8 @@ CREATE UNIQUE INDEX "CourseModule_courseId_order_key" ON "CourseModule"("courseI
 CREATE UNIQUE INDEX "LearningOutcome_moduleId_code_key" ON "LearningOutcome"("moduleId", "code");
 CREATE UNIQUE INDEX "EvaluationCriterion_learningOutcomeId_code_key" ON "EvaluationCriterion"("learningOutcomeId", "code");
 CREATE UNIQUE INDEX "Student_documentId_key" ON "Student"("documentId");
+CREATE UNIQUE INDEX "LearningOutcomeAssessment_studentId_learningOutcomeId_key" ON "LearningOutcomeAssessment"("studentId", "learningOutcomeId");
+CREATE UNIQUE INDEX "EvaluationCriterionAssessment_studentId_evaluationCriterionId_key" ON "EvaluationCriterionAssessment"("studentId", "evaluationCriterionId");
 CREATE UNIQUE INDEX "AttendanceSession_courseId_date_type_key" ON "AttendanceSession"("courseId", "date", "type");
 CREATE UNIQUE INDEX "AttendanceRecord_studentId_sessionId_key" ON "AttendanceRecord"("studentId", "sessionId");
 CREATE UNIQUE INDEX "Grade_studentId_key" ON "Grade"("studentId");
@@ -129,6 +155,22 @@ ALTER TABLE "EvaluationCriterion"
 ALTER TABLE "Student"
   ADD CONSTRAINT "Student_courseId_fkey"
   FOREIGN KEY ("courseId") REFERENCES "Course"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "LearningOutcomeAssessment"
+  ADD CONSTRAINT "LearningOutcomeAssessment_studentId_fkey"
+  FOREIGN KEY ("studentId") REFERENCES "Student"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "LearningOutcomeAssessment"
+  ADD CONSTRAINT "LearningOutcomeAssessment_learningOutcomeId_fkey"
+  FOREIGN KEY ("learningOutcomeId") REFERENCES "LearningOutcome"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "EvaluationCriterionAssessment"
+  ADD CONSTRAINT "EvaluationCriterionAssessment_studentId_fkey"
+  FOREIGN KEY ("studentId") REFERENCES "Student"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "EvaluationCriterionAssessment"
+  ADD CONSTRAINT "EvaluationCriterionAssessment_evaluationCriterionId_fkey"
+  FOREIGN KEY ("evaluationCriterionId") REFERENCES "EvaluationCriterion"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "AttendanceSession"
   ADD CONSTRAINT "AttendanceSession_courseId_fkey"

@@ -51,6 +51,7 @@ model LearningOutcome {
   code        String
   description String
   criteria    EvaluationCriterion[]
+  evaluations LearningOutcomeAssessment[]
   createdAt   DateTime              @default(now())
   updatedAt   DateTime              @updatedAt
 
@@ -63,10 +64,41 @@ model EvaluationCriterion {
   learningOutcome   LearningOutcome @relation(fields: [learningOutcomeId], references: [id], onDelete: Cascade)
   code              String
   description       String
+  evaluations       EvaluationCriterionAssessment[]
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
   @@unique([learningOutcomeId, code])
+}
+
+model LearningOutcomeAssessment {
+  id                String          @id @default(cuid())
+  studentId         String
+  student           Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  learningOutcomeId String
+  learningOutcome   LearningOutcome @relation(fields: [learningOutcomeId], references: [id], onDelete: Cascade)
+  status            String          @default("NO_EVALUADO") // NO_EVALUADO | EN_PROCESO | APTO | NO_APTO
+  evidence          String?
+  teacherNotes      String?
+  assessedAt        DateTime?
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([studentId, learningOutcomeId])
+}
+
+model EvaluationCriterionAssessment {
+  id                  String              @id @default(cuid())
+  studentId           String
+  student             Student             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  evaluationCriterionId String
+  evaluationCriterion   EvaluationCriterion @relation(fields: [evaluationCriterionId], references: [id], onDelete: Cascade)
+  status              String              @default("NO_EVALUADO") // NO_EVALUADO | EN_PROCESO | APTO | NO_APTO
+  evidence            String?
+  teacherNotes        String?
+  assessedAt          DateTime?
+  updatedAt           DateTime            @updatedAt
+
+  @@unique([studentId, evaluationCriterionId])
 }
 
 model Student {
@@ -82,6 +114,8 @@ model Student {
   attendanceRecords AttendanceRecord[]
   grade             Grade?
   adaptation        Adaptation?
+  learningOutcomeAssessments LearningOutcomeAssessment[]
+  criterionAssessments EvaluationCriterionAssessment[]
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
 }
