@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.focus-ring {
+  @apply focus:outline-none focus:ring-2 focus:ring-school-teal focus:ring-offset-2;
+}
+
+.input {
+  @apply h-10 w-full rounded border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-school-teal focus:outline-none focus:ring-2 focus:ring-school-teal/20;
+}
+
+textarea.input {
+  @apply h-auto py-2;
+}
+
+.btn-primary {
+  @apply inline-flex h-10 items-center justify-center gap-2 rounded bg-school-teal px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-school-dark focus:outline-none focus:ring-2 focus:ring-school-teal focus:ring-offset-2;
+}
+
+.btn-secondary {
+  @apply inline-flex h-10 items-center justify-center gap-2 rounded border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-school-teal hover:text-school-teal focus:outline-none focus:ring-2 focus:ring-school-teal focus:ring-offset-2;
+}

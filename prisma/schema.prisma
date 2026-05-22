@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Course {
+  id                 String          @id @default(cuid())
+  name               String          @unique
+  collection         String?
+  platformTheoryHours Int            @default(0)
+  tutoredHours       Int             @default(0)
+  level              String?
+  assessmentType     String?
+  assessmentMilestones String?
+  modality           String          @default("STANDARD") // STANDARD | PLACETA_EDU
+  collaboratorCenter String?
+  onlineWithoutCenter Boolean        @default(false)
+  gradingMode        String          @default("CUALITATIVO") // CUALITATIVO | NUMERICO_CISCO
+  startDate          DateTime?
+  endDate            DateTime?
+  isOpen             Boolean         @default(true)
+  students           Student[]
+  sessions           AttendanceSession[]
+  grades             Grade[]
+  modules            CourseModule[]
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+}
+
+model CourseModule {
+  id               String            @id @default(cuid())
+  courseId         String
+  course           Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  order            Int
+  title            String
+  learningOutcomes LearningOutcome[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@unique([courseId, order])
+}
+
+model LearningOutcome {
+  id          String                @id @default(cuid())
+  moduleId    String
+  module      CourseModule          @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  code        String
+  description String
+  criteria    EvaluationCriterion[]
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@unique([moduleId, code])
+}
+
+model EvaluationCriterion {
+  id                String          @id @default(cuid())
+  learningOutcomeId String
+  learningOutcome   LearningOutcome @relation(fields: [learningOutcomeId], references: [id], onDelete: Cascade)
+  code              String
+  description       String
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([learningOutcomeId, code])
+}
+
+model Student {
+  id                String       @id @default(cuid())
+  firstName         String
+  lastName          String
+  documentId        String       @unique
+  email             String
+  phone             String?
+  confidentialNotes String?
+  courseId          String
+  course            Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  attendanceRecords AttendanceRecord[]
+  grade             Grade?
+  adaptation        Adaptation?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+}
+
+model AttendanceSession {
+  id        String       @id @default(cuid())
+  date      DateTime
+  type      String       // PRESENCIAL | TELEMATICA
+  courseId  String
+  course    Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  records   AttendanceRecord[]
+  createdAt DateTime     @default(now())
+
+  @@unique([courseId, date, type])
+}
+
+model AttendanceRecord {
+  id        String             @id @default(cuid())
+  status    String             // ASISTE | FALTA_JUSTIFICADA | FALTA_INJUSTIFICADA | RETRASO
+  studentId String
+  student   Student            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  sessionId String
+  session   AttendanceSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  notes     String?
+
+  @@unique([studentId, sessionId])
+}
+
+model Grade {
+  id                 String         @id @default(cuid())
+  studentId          String         @unique
+  student            Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  courseId           String
+  course             Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  qualitativeStatus  String         @default("PENDIENTE") // APTO | NO_APTO | PENDIENTE
+  internalMockScore  Float?
+  ciscoFinalValidated Boolean       @default(false)
+  tutorObservations  String?
+  finalStatus        String         @default("PENDIENTE") // APTO | NO_APTO | PENDIENTE
+  updatedAt          DateTime       @updatedAt
+}
+
+model Adaptation {
+  id              String             @id @default(cuid())
+  studentId       String             @unique
+  student         Student            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  required        Boolean            @default(false)
+  reason          String?
+  tutorJustification String?
+  updatedAt       DateTime           @updatedAt
+}
